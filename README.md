@@ -1,4 +1,19 @@
 # Meeting Summarization
+
+## Environment
+- >Python3.6
+- pipenv
+
+## Installation (Voice Identity)
+```python
+git clone https://github.com/free-soellingeraj/boringppl-meeting-summarization.git
+cd boringppl-meeting-summarization
+pipenv install
+rclone config # follow instructions configure your google drive
+rclone sync "your-rlcone-drive-name:voice-identity-models/dataset/oyez/full_audios/" "full_audios" --drive-shared-with-me
+rclone sync "your-rlcone-drive-name:voice-identity-models/dataset/oyez/transcripts/" "transcripts" --drive-shared-with-me
+```
+
 ## Voice identity modeling
 The task is to develop a capability of voice identification.  The most successful voice identity model or model system will associate each "utterance" in the audio with the person who made the utterance ("speaker").  
 Please see the file `voice-identity-modeling/Design` document.
