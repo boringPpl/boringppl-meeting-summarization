@@ -1,0 +1,16 @@
+download rclone
+rclone config
+# setup google drive, just use defaults
+
+## Note: replace aaron-personal-gdrive with your rclone drive name
+
+# view files
+rclone ls your-drive-name: [--drive-shared-with-me]
+
+# download files
+cd your/root/folder # for project
+rclone sync "aaron-personal-gdrive:PRCVD/experiments/voice-identity-models/dataset/oyez/full_audios/" "full_audios" [--drive-shared-with-me]
+
+
+# sync failures
+rclone sync "full_audios" aaron-personal-gdrive:PRCVD/experiments/voice-identity-models/dataset/oyez/full_audios/ --progress
