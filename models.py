@@ -66,6 +66,7 @@ class TranscriptData:
         """"""
         self.transcript = []
         self.files = []
+        self.failures = []
         self.driver_fp = '/Users/free-soellingeraj/Downloads/chromedriver'
         
     def get_audio_url(self, codec='mp3'):
@@ -92,7 +93,7 @@ class TranscriptData:
         
         
     
-    def write(self, fn, data):
+    def write(self, data):
         """
         Save transcript data to fn
         
@@ -104,49 +105,6 @@ class TranscriptData:
         """
         with open(self.fp, 'wb') as fout:
             pickle.dump(data, fout)
-        
-    
-    def parse(self, doc):
-        """
-        Parses raw html doc containing oyez transcript.
-        
-        In:
-            doc: BeautifulSoup, html document
-        
-        Returns:
-            None, writes to self.transcript, self.failures, self.files
-            
-        """
-        sys.setrecursionlimit(50000)
-        self.files = [
-            thing['src'] 
-            for thing 
-            in doc.find_all('audio')[0].find_all('source')
-        ]
-        for article in doc.find_all('article'):
-            case_name = article.find('h1').get_text()
-            t = article.find('h2').get_text().split(' - ')
-            conv_type = t[0]
-            conv_date = t[1]
-            for section in article.find_all('section'):
-                speaker = section.find('h4').get_text()
-                for paragraph in section.find_all('p'):
-                    try:
-                        section = OyezTranscriptSection()
-                        section.create(
-                            raw=paragraph, 
-                            case_name=case_name,
-                            conv_name=conv_name,
-                            conv_date=conv_date,
-                            speaker=speaker, 
-                            start_time=paragraph['start-time'],
-                            stop_time=paragraph['stop-time'],
-                            transcript=paragraph.get_text()
-                        )
-                        self.transcript.append(section)
-                    
-                    except:
-                        self.failures.append(paragraph)
                         
                         
 class AudioDataBunch:
@@ -249,6 +207,6 @@ class SectionBunch:
     def create(self, transcript_section, parent_audio_data):
         self.transcript_section = transcript_section
         self.audio_data = parent_audio_data.slice_waveform(
-            start_sec=float(self.transcript_section['start_time']),
-            close_sec=float(self.transcript_section['stop_time'])
+            start_sec=float(self.transcript_section.section['start_time']),
+            close_sec=float(self.transcript_section.section['stop_time'])
         )

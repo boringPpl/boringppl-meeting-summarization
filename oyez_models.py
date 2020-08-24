@@ -1,6 +1,12 @@
 import sys; import os
-from models import (AudioData, AudioDataBunch, TranscriptData, TranscriptSection, SectionBunch)
+from datetime import datetime
+import requests
+from collections import OrderedDict
 
+import bs4
+
+from models import (AudioData, AudioDataBunch, TranscriptData, TranscriptSection, SectionBunch)
+from scraping import SeleniumSpider
 
 class OyezAudioData(AudioData):
     def __init__(self, cache_dir=''):
@@ -23,12 +29,12 @@ class OyezAudioData(AudioData):
             self.load_wav(fp=os.path.join(self.cache_dir, clean_url))
 
         else:
-            with requests.Session() as session:
+            with requests.Session() as session:                                                     
                 audio_bytes = session.get(url).content
 
             with open(fp, 'wb') as f:
                 f.write(audio_bytes)
-            
+                                      
             del audio_bytes
             self.load_wav(fp=clean_url)
 
@@ -48,7 +54,7 @@ class OyezAudioDataBunch(AudioDataBunch):
         self.audio_data = OyezAudioData(cache_dir=audio_dirpath)
         self.audio_data.download(url=audio_url)
         self.bunch_sections = []
-        for _, section in self.transcript.transcript.items():
+        for section in self.transcript.transcript:
             s = SectionBunch()
             s.create(
                 transcript_section=section, parent_audio_data=self.audio_data
@@ -61,7 +67,7 @@ class OyezAudioDataBunch(AudioDataBunch):
 class OyezTranscriptData(TranscriptData):
     def __init__(self, cache_dir='transcripts', fp=None, url=None):
         self.url_fmt = 'https://apps.oyez.org/player/#/roberts10/oral_argument_audio/{}'
-        self.fn_fmt = '{}_tranny.pickle'
+        self.fn_fmt = '{}_transcript.pickle'
         self.cache_dir = cache_dir
         super().__init__()
         if not fp and not url:
@@ -76,9 +82,7 @@ class OyezTranscriptData(TranscriptData):
             self.fn = self.fp.split('/')[-1]
             self.oyez_id = self.id_from_fp(fp=fp)
             self.url = self.url_fmt.format(self.oyez_id)
-            
-        self.failures = None
-        
+                    
     
     def id_from_fp(self, fp):
         return int(fp.split('/')[-1].split('_')[0])
@@ -106,19 +110,18 @@ class OyezTranscriptData(TranscriptData):
             del data
             
         except:
-            mun = TranscriptSpider(
+            mun = SeleniumSpider(
                 driver_fp=self.driver_fp, 
                 url_to_crawl=self.url
             )
-
-            mun.parse()
+            mun.parse(how='all', wait=3.5)
             self.parse(
                 doc=bs4.BeautifulSoup(mun.data, 'html.parser')
             )
             del mun
-                
+            self.write()
             
-    def write(self, fn):
+    def write(self):
         """
         Save transcript data to fn
         
@@ -128,12 +131,57 @@ class OyezTranscriptData(TranscriptData):
         Returns:
             None
         """
-        self.fp = os.path.join(dirpath, fn)
-        super().write(fn=fn, data={
-            'failures': failures,
-            'transcript': transcript,  # does this work to pick all these objects?
-            'files': files
+        # TODO: deprecate this data structure to a simple list.
+        ordered_transcript = OrderedDict({'{tx}{s}{st}'.format(
+            tx=t.section['transcript'], s=t.section['start_time'], st=t.section['stop_time']
+        ): t for t in self.transcript})
+        super().write(data={
+            'failures': self.failures,
+            'transcript': ordered_transcript,  # does this work to pick all these objects?
+            'files': self.files
         })
+        
+        
+    def parse(self, doc):
+        """
+        Parses raw html doc containing oyez transcript.
+        
+        In:
+            doc: BeautifulSoup, html document
+        
+        Returns:
+            None, writes to self.transcript, self.failures, self.files
+            
+        """
+        sys.setrecursionlimit(50000)
+        self.files = [
+            thing['src'] 
+            for thing 
+            in doc.find_all('audio')[0].find_all('source')
+        ]
+        for article in doc.find_all('article'):
+            case_name = article.find('h1').get_text()
+            t = article.find('h2').get_text().split(' - ')
+            conv_type = t[0]
+            conv_date = t[1]
+            for section in article.find_all('section'):
+                speaker = section.find('h4').get_text()
+                for paragraph in section.find_all('p'):
+                    try:
+                        section = OyezTranscriptSection()
+                        section.create(section={
+                            'raw': paragraph, 
+                            'case_name': case_name,
+                            'conv_date': conv_date,
+                            'speaker': speaker, 
+                            'start_time': paragraph['start-time'],
+                            'stop_time': paragraph['stop-time'],
+                            'transcript': paragraph.get_text()
+                        })
+                        self.transcript.append(section)
+                    
+                    except Exception as e:
+                        self.failures.append(paragraph)
         
         
 class OyezTranscriptSection(TranscriptSection):
@@ -146,4 +194,4 @@ class OyezTranscriptSection(TranscriptSection):
     
     def create(self, section):
         self.section = section
-        self.section['conv_date'] = datetime.strftime(self.section['conv_date'], self.date_fmt)
+        self.section['conv_date'] = datetime.strptime(self.section['conv_date'], self.date_fmt)
